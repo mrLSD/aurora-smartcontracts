@@ -2,7 +2,7 @@
   <div class="container mx-auto p-4 max-w-2xl">
     <div class="bg-gray-800 text-white p-6 rounded-lg shadow-xl">
       <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">StakeToken Staging dApp</h1>
+        <h1 class="text-3xl font-bold">CoolFinance Staking</h1>
         <button @click="account ? disconnectWallet() : connectWallet()"
           class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 ease-in-out">
           {{ account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet' }}
@@ -13,76 +13,81 @@
       <div v-if="error" class="bg-red-500 text-white p-3 rounded-md mb-4">{{ error }}</div>
 
       <div v-if="account && !isLoadingInitial && !error">
-        <!-- Contract Info -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <InfoCard title="Wallet Balance">
-            {{ +formatBigInt(stakeTokenBalance) }} {{ symbol }}
-          </InfoCard>
-          <InfoCard title="Your Staked tokens">
-            {{ +formatBigInt(stakedBalance + pendingRewards) }} {{ symbol }}
+        <div class="space-y-6 mb-6">
+          <div class="grid grid-cols-2 items-start gap-4 p-4 bg-gray-700 rounded-lg">
+            <div>
+              <p class="text-sm text-gray-400">Available Balance</p>
+              <p class="text-2xl font-semibold">{{ +formatBigInt(stakeTokenBalance) }} {{ symbol }}</p>
+            </div>
+            <div class="flex flex-col items-stretch space-y-2">
+              <div class="flex items-center space-x-2">
+                <input type="number" v-model="stakeAmount" placeholder="Amount to stake"
+                  class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500 w-full" />
+                <button @click="setMaxStakeAmount" class="text-sm text-indigo-400 hover:text-indigo-300 whitespace-nowrap">Max</button>
+              </div>
+              <button @click="handleStake"
+                :disabled="isTxLoading || !stakeAmount || parseFloat(String(stakeAmount || '0')) <= 0 || (allowance < parseUnits(String(stakeAmount || '0'), 18))"
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                {{ (allowance < parseUnits(String(stakeAmount || '0'), 18) && parseFloat(String(stakeAmount || '0')) > 0) ?
+                  'Approve & Stake' : 'Stake' }}
+              </button>
+              <p v-if="allowance < parseUnits(String(stakeAmount || '0'), 18) && parseFloat(String(stakeAmount || '0')) > 0"
+                class="text-xs text-yellow-400 mt-1">
+                You need to approve spending first. Clicking will initiate an approval transaction then staking.
+              </p>
+            </div>
+          </div>
 
-          </InfoCard>
+          <div class="grid grid-cols-2 items-start gap-4 p-4 bg-gray-700 rounded-lg">
+            <div>
+              <p class="text-sm text-gray-400">Staked</p>
+              <p class="text-2xl font-semibold">{{ +formatBigInt(stakedBalance) }} {{ symbol }}</p>
+            </div>
+            <div class="flex flex-col items-stretch space-y-2">
+              <div v-if="!withdrawalRequestInfo.isActive">
+                <div class="flex items-center space-x-2">
+                  <input type="number" v-model="withdrawAmount" placeholder="Amount to withdraw"
+                    class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500 w-full" />
+                  <button @click="setMaxWithdrawAmount" class="text-sm text-indigo-400 hover:text-indigo-300 whitespace-nowrap">Max</button>
+                </div>
+                <button @click="handleRequestWithdrawal"
+                  :disabled="isTxLoading || !withdrawAmount || parseFloat(String(withdrawAmount || '0')) <= 0"
+                  class="w-full mt-2 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                  WITHDRAW
+                </button>
+                 <p class="text-xs text-gray-400 mt-1">Cooldown: {{ COOLDOWN_PERIOD_HOURS }}h after request.</p>
+              </div>
+              <div v-else class="space-y-2">
+                <div>
+                  <p class="text-sm">Withdrawal requested: {{ formatBigInt(withdrawalRequestInfo.amount) }} {{ symbol }}</p>
+                  <p class="mb-2 text-yellow-400">
+                    <span v-if="withdrawalRequestInfo.cooldownOver">Cooldown period over. You can withdraw now.</span>
+                    <span v-else>Cooldown ends: {{ withdrawalRequestInfo.cooldownEndTimeFormatted }} ({{
+                      withdrawalRequestInfo.cooldownRemainingFormatted }})</span>
+                  </p>
+                </div>
+                <div class="flex space-x-2">
+                    <button @click="handleWithdraw" :disabled="isTxLoading || !withdrawalRequestInfo.cooldownOver"
+                        class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                        Withdraw Now
+                    </button>
+                    <button @click="handleCancelWithdrawal" :disabled="isTxLoading"
+                        class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                        Cancel Request
+                    </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <InfoCard title="Pending Rewards">
             {{ +formatBigInt(pendingRewards) }} {{ symbol }}
           </InfoCard>
           <InfoCard title="Yearly Reward Rate (APY Approx.)">
             {{ rewardRateDisplay }}%
           </InfoCard>
-        </div>
-
-        <!-- Staking Section -->
-        <div class="bg-gray-700 p-4 rounded-lg mb-6">
-          <h2 class="text-xl font-semibold mb-3">Stake Tokens</h2>
-          <div class="flex items-center space-x-2 mb-3">
-            <input type="number" v-model="stakeAmount" placeholder="Amount to stake"
-              class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500" />
-            <button @click="setMaxStakeAmount" class="text-sm text-indigo-400 hover:text-indigo-300">Max</button>
-          </div>
-          <button @click="handleStake"
-            :disabled="isTxLoading || !stakeAmount || parseFloat(stakeAmount) <= 0 || (allowance < parseUnits(stakeAmount.toString(), 18))"
-            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
-            {{ (allowance < parseUnits(stakeAmount.toString() || '0', 18) && parseFloat(stakeAmount || '0') > 0) ?
-              'Approve & Stake' : 'Stake' }}
-          </button>
-          <p v-if="allowance < parseUnits(stakeAmount.toString() || '0', 18) && parseFloat(stakeAmount || '0') > 0"
-            class="text-xs text-yellow-400 mt-1">
-            You need to approve spending first. Clicking will initiate an approval transaction then staking.
-          </p>
-        </div>
-
-        <!-- Withdrawal Section -->
-        <div class="bg-gray-700 p-4 rounded-lg">
-          <h2 class="text-xl font-semibold mb-3">Withdraw Staked Tokens</h2>
-          <div v-if="!withdrawalRequestInfo.isActive">
-            <div class="flex items-center space-x-2 mb-3">
-              <input type="number" v-model="withdrawAmount" placeholder="Amount to withdraw"
-                class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500" />
-              <button @click="setMaxWithdrawAmount" class="text-sm text-indigo-400 hover:text-indigo-300">Max</button>
-            </div>
-            <button @click="handleRequestWithdrawal"
-              :disabled="isTxLoading || !withdrawAmount || parseFloat(withdrawAmount) <= 0"
-              class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
-              Request Withdrawal ({{ COOLDOWN_PERIOD_HOURS }}h Cooldown)
-            </button>
-          </div>
-          <div v-else>
-            <p class="mb-2">Withdrawal requested: {{ formatBigInt(withdrawalRequestInfo.amount) }} MST</p>
-            <p class="mb-2 text-yellow-400">
-              <span v-if="withdrawalRequestInfo.cooldownOver">Cooldown period over. You can withdraw now.</span>
-              <span v-else>Cooldown ends: {{ withdrawalRequestInfo.cooldownEndTimeFormatted }} ({{
-                withdrawalRequestInfo.cooldownRemainingFormatted }})</span>
-            </p>
-            <div class="flex space-x-2">
-              <button @click="handleWithdraw" :disabled="isTxLoading || !withdrawalRequestInfo.cooldownOver"
-                class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
-                Withdraw Now
-              </button>
-              <button @click="handleCancelWithdrawal" :disabled="isTxLoading"
-                class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
-                Cancel Request
-              </button>
-            </div>
-          </div>
         </div>
 
         <div v-if="isTxLoading" class="mt-4 text-center">
