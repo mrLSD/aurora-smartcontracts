@@ -15,7 +15,7 @@ PromiseResult,
 } from "@aurora-sdk/AuroraSdk.sol";
 
 // NEAR gas constants (TGas)
-uint64 constant CONTRACT_CALL_NEAR_GAS = 2_000_000_000_000;
+uint64 constant CONTRACT_CALL_NEAR_GAS = 100_000_000_000;
 uint64 constant CONTRACT_CALLBACK_NEAR_GAS = 6_000_000_000_000;
 
 contract Counter is AccessControl {

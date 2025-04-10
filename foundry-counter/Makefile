@@ -10,6 +10,8 @@ echo:
 	@echo "  deploy       Deploy the contract to the network"
 	@echo "  local        Run a local script"
 
+#========================================================
+# Deploy contract
 deploy-script:
 	@forge script script/DeployCounter.s.sol:DeployCounterScript \
 		--optimize \
@@ -33,6 +35,7 @@ deploy:
 local:
 	@forge script script/Counter.s.sol:CounterScript --fork-url http://localhost:8545 --broadcast --interactives 1
 
+#========================================================
 get-interface:
 	@cast interface src/Counter.sol:Counter
 
