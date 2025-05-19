@@ -1,0 +1,272 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol"; // Для безопасных математических операций
+
+contract AdvancedERC20Staking is Ownable {
+    using SafeMath for uint256;
+
+    // --- События ---
+    event Staked(address indexed user, uint256 amount);
+    event Withdrawn(address indexed user, uint256 amount); // Снятие основной суммы стейка
+    event RewardsCompounded(address indexed user, uint256 rewardAmount); // Награды добавлены к стейку
+    event WithdrawalRequested(address indexed user, uint256 amount, uint256 requestTime);
+    event WithdrawalCancelled(address indexed user);
+    event RewardRateChanged(uint256 newRate);
+    event EmergencyWithdraw(address indexed user, uint256 amount);
+
+    // --- Структуры ---
+    struct UserInfo {
+        uint256 stakedAmount;         // Сколько пользователь застейкал (включая компаундированные награды)
+        uint256 rewardsPaidPerToken;  // "Слепок" rewardPerTokenStored на момент последнего взаимодействия
+    }
+
+    struct WithdrawalRequest {
+        uint256 amount;
+        uint256 requestTime;
+    }
+
+    // --- Переменные состояния ---
+    IERC20 public immutable stakeToken; // Токен, который стейкается и которым выплачиваются награды
+
+    mapping(address => UserInfo) public userInfo;
+    mapping(address => WithdrawalRequest) public withdrawalRequests;
+
+    uint256 public totalStaked;            // Общее количество застейканных токенов всеми пользователями
+    uint256 public rewardRate;             // Наград в секунду (сумма на все застейканные токены). Например, если 10 токенов в секунду, и totalStaked = 1000, то на каждый токен 0.01 в секунду.
+                                           // Это значение владелец должен устанавливать, исходя из общего пула наград.
+    uint256 public lastUpdateTime;         // Timestamp последнего глобального обновления наград
+    uint256 public rewardPerTokenStored;   // Суммарно начисленных наград на 1 токен (с учетом PRECISION_FACTOR)
+
+    uint256 public constant COOLDOWN_PERIOD = 2 hours; // 2 часа кулдаун
+    uint256 public constant PRECISION_FACTOR = 1e18;   // Для точности расчетов rewardPerTokenStored
+
+    // --- Модификаторы ---
+    modifier updateReward(address _account) {
+        _updateGlobalRewardState();
+        if (_account != address(0)) {
+            _compoundRewardsForUser(_account);
+        }
+        _;
+    }
+
+    // --- Конструктор ---
+    constructor(address _stakeTokenAddress, uint256 _initialRewardRate) {
+        require(_stakeTokenAddress != address(0), "Staking token cannot be zero address");
+        stakeToken = IERC20(_stakeTokenAddress);
+        rewardRate = _initialRewardRate; // Устанавливаем начальную ставку
+        lastUpdateTime = block.timestamp;
+    }
+
+    // --- Функции для владельца ---
+    function setRewardRate(uint256 _newRate) external onlyOwner updateReward(address(0)) {
+        rewardRate = _newRate;
+        emit RewardRateChanged(_newRate);
+    }
+
+    // Функция для пополнения контракта токенами для наград (если они не минтятся)
+    // Владелец должен убедиться, что на контракте достаточно токенов для покрытия `rewardRate`
+    function depositRewardTokens(uint256 _amount) external onlyOwner {
+        require(_amount > 0, "Amount must be greater than zero");
+        uint256 initialBalance = stakeToken.balanceOf(address(this));
+        stakeToken.transferFrom(msg.sender, address(this), _amount);
+        require(stakeToken.balanceOf(address(this)) == initialBalance.add(_amount), "Token transfer failed");
+    }
+
+    // Экстренное снятие всех средств пользователем в случае проблем с контрактом (без наград, без кулдауна)
+    function emergencyWithdraw() external {
+        _updateGlobalRewardState(); // Обновить глобальное состояние, чтобы другие пользователи не пострадали
+                                    // от изменения totalStaked без учета их наград
+        
+        UserInfo storage user = userInfo[msg.sender];
+        uint256 amountToWithdraw = user.stakedAmount;
+        
+        if (amountToWithdraw > 0) {
+            user.stakedAmount = 0;
+            user.rewardsPaidPerToken = rewardPerTokenStored; // Сбросить, так как все снято
+            totalStaked = totalStaked.sub(amountToWithdraw);
+
+            // Отменяем активный запрос на вывод, если есть
+            if (withdrawalRequests[msg.sender].amount > 0) {
+                delete withdrawalRequests[msg.sender];
+                emit WithdrawalCancelled(msg.sender);
+            }
+            
+            stakeToken.transfer(msg.sender, amountToWithdraw);
+            emit EmergencyWithdraw(msg.sender, amountToWithdraw);
+        }
+    }
+
+    // --- Публичные функции для стейкинга и снятия ---
+
+    /**
+     * @notice Застейкать токены. Награды автоматически компаундируются.
+     * @param _amount Количество токенов для стейкинга.
+     */
+    function stake(uint256 _amount) external updateReward(msg.sender) {
+        require(_amount > 0, "Cannot stake 0");
+        // Проверка, что у пользователя нет активного запроса на вывод, т.к. стейкинг меняет баланс
+        require(withdrawalRequests[msg.sender].amount == 0, "Complete or cancel pending withdrawal first");
+
+        UserInfo storage user = userInfo[msg.sender];
+        
+        stakeToken.transferFrom(msg.sender, address(this), _amount);
+        
+        user.stakedAmount = user.stakedAmount.add(_amount);
+        totalStaked = totalStaked.add(_amount);
+        
+        // user.rewardsPaidPerToken уже обновлен в _compoundRewardsForUser (через модификатор updateReward)
+        emit Staked(msg.sender, _amount);
+    }
+
+    /**
+     * @notice Запросить вывод средств. Средства станут доступны после кулдауна.
+     * @param _amount Количество токенов для вывода.
+     */
+    function requestWithdrawal(uint256 _amount) external updateReward(msg.sender) {
+        require(_amount > 0, "Cannot request withdrawal of 0");
+        UserInfo storage user = userInfo[msg.sender];
+        require(user.stakedAmount >= _amount, "Insufficient staked balance");
+        require(withdrawalRequests[msg.sender].amount == 0, "Withdrawal request already pending");
+
+        withdrawalRequests[msg.sender] = WithdrawalRequest(_amount, block.timestamp);
+        emit WithdrawalRequested(msg.sender, _amount, block.timestamp);
+    }
+
+    /**
+     * @notice Отменить активный запрос на вывод средств.
+     */
+    function cancelWithdrawalRequest() external {
+        require(withdrawalRequests[msg.sender].amount > 0, "No active withdrawal request");
+        delete withdrawalRequests[msg.sender];
+        emit WithdrawalCancelled(msg.sender);
+    }
+
+    /**
+     * @notice Вывести средства после окончания кулдауна. Награды автоматически компаундируются перед выводом.
+     */
+    function withdraw() external updateReward(msg.sender) {
+        WithdrawalRequest storage request = withdrawalRequests[msg.sender];
+        require(request.amount > 0, "No withdrawal request pending");
+        require(block.timestamp >= request.requestTime.add(COOLDOWN_PERIOD), "Cooldown period not over");
+
+        UserInfo storage user = userInfo[msg.sender];
+        uint256 amountToWithdraw = request.amount;
+
+        // Дополнительная проверка, хотя user.stakedAmount должен быть обновлен в updateReward
+        require(user.stakedAmount >= amountToWithdraw, "Error: Staked balance less than requested withdrawal");
+
+        user.stakedAmount = user.stakedAmount.sub(amountToWithdraw);
+        totalStaked = totalStaked.sub(amountToWithdraw);
+        
+        delete withdrawalRequests[msg.sender];
+        // user.rewardsPaidPerToken уже обновлен в _compoundRewardsForUser (через модификатор updateReward)
+        
+        stakeToken.transfer(msg.sender, amountToWithdraw);
+        emit Withdrawn(msg.sender, amountToWithdraw);
+    }
+
+    // --- Внутренние функции для расчета наград ---
+
+    function _updateGlobalRewardState() internal {
+        if (totalStaked == 0) {
+            lastUpdateTime = block.timestamp;
+            return;
+        }
+        uint256 timeElapsed = block.timestamp.sub(lastUpdateTime);
+        if (timeElapsed > 0) {
+            uint256 totalAccruedRewards = timeElapsed.mul(rewardRate);
+            rewardPerTokenStored = rewardPerTokenStored.add(
+                totalAccruedRewards.mul(PRECISION_FACTOR).div(totalStaked)
+            );
+        }
+        lastUpdateTime = block.timestamp;
+    }
+
+    function _calculatePendingRewards(address _account) internal view returns (uint256) {
+        UserInfo storage user = userInfo[_account];
+        uint256 currentRewardPerToken = rewardPerTokenStored;
+
+        if (totalStaked > 0 && block.timestamp > lastUpdateTime) { // Если были изменения с последнего глобального апдейта
+             uint256 timeElapsed = block.timestamp.sub(lastUpdateTime);
+             uint256 totalAccruedRewards = timeElapsed.mul(rewardRate);
+             currentRewardPerToken = currentRewardPerToken.add(
+                totalAccruedRewards.mul(PRECISION_FACTOR).div(totalStaked)
+            );
+        }
+        
+        return user.stakedAmount.mul(currentRewardPerToken.sub(user.rewardsPaidPerToken)).div(PRECISION_FACTOR);
+    }
+
+    function _compoundRewardsForUser(address _account) internal {
+        UserInfo storage user = userInfo[_account];
+        uint256 pendingRewards = _calculatePendingRewards(_account);
+
+        if (pendingRewards > 0) {
+            // "Награды аккумулируются как часть самого стейкинга"
+            // Это означает, что мы просто увеличиваем stakedAmount пользователя.
+            // Контракт должен иметь достаточно токенов для покрытия этих "бумажных" наград при выводе.
+            // Убедитесь, что rewardRate настроен так, чтобы это было возможно,
+            // или что контракт регулярно пополняется токенами через depositRewardTokens.
+            user.stakedAmount = user.stakedAmount.add(pendingRewards);
+            totalStaked = totalStaked.add(pendingRewards); // Важно обновить totalStaked, т.к. награды стали частью стейка
+            emit RewardsCompounded(_account, pendingRewards);
+        }
+        user.rewardsPaidPerToken = rewardPerTokenStored; // Обновляем слепок даже если pendingRewards = 0
+    }
+    
+
+    // --- View функции ---
+
+    /**
+     * @notice Возвращает количество застейканных токенов для пользователя (включая компаундированные награды).
+     */
+    function balanceOf(address _account) external view returns (uint256) {
+        return userInfo[_account].stakedAmount;
+    }
+
+    /**
+     * @notice Возвращает количество ожидающих начисления наград для пользователя.
+     * Эти награды будут автоматически добавлены к стейку при следующем вызове stake, requestWithdrawal или withdraw.
+     */
+    function getPendingRewards(address _account) external view returns (uint256) {
+        return _calculatePendingRewards(_account);
+    }
+
+    /**
+     * @notice Возвращает информацию о текущем запросе на вывод для пользователя.
+     */
+    function getWithdrawalRequestInfo(address _account) external view returns (uint256 amount, uint256 requestTime, uint256 withdrawAvailableTime) {
+        WithdrawalRequest storage request = withdrawalRequests[_account];
+        if (request.amount == 0) {
+            return (0, 0, 0);
+        }
+        return (request.amount, request.requestTime, request.requestTime.add(COOLDOWN_PERIOD));
+    }
+
+    function getCurrentRewardPerToken() public view returns (uint256) {
+        if (totalStaked == 0) {
+            return rewardPerTokenStored;
+        }
+        uint256 timeElapsed = block.timestamp.sub(lastUpdateTime);
+        if (timeElapsed == 0) {
+            return rewardPerTokenStored;
+        }
+        uint256 totalAccruedRewards = timeElapsed.mul(rewardRate);
+        return rewardPerTokenStored.add(totalAccruedRewards.mul(PRECISION_FACTOR).div(totalStaked));
+    }
+
+    function getStakeTokenAddress() external view returns (address) {
+        return address(stakeToken);
+    }
+
+    function getCurrentRewardRate() external view returns (uint256) {
+        return rewardRate;
+    }
+
+    function getTotalStaked() external view returns (uint256) {
+        return totalStaked;
+    }
+}
