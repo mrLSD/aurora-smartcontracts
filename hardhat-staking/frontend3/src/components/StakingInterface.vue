@@ -1,12 +1,12 @@
-<template>
+Субтитры создавал DimaTorzok<template>
   <div class="container mx-auto p-4 max-w-2xl">
     <div class="bg-gray-800 text-white p-6 rounded-lg shadow-xl">
       <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">My Staking DApp</h1>
-        <button
-          @click="account ? disconnectWallet() : connectWallet()"
-          class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 ease-in-out"
-        >
+        <h1 class="text-3xl font-bold">StakeToken Staging dApp <br>
+          {{ contractStakingContract }} <br>
+          {{ contractStakedToken }}</h1>
+        <button @click="account ? disconnectWallet() : connectWallet()"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 ease-in-out">
           {{ account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet' }}
         </button>
       </div>
@@ -17,14 +17,15 @@
       <div v-if="account && !isLoadingInitial && !error">
         <!-- Contract Info -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <InfoCard title="Your Wallet MST Balance">
-            {{ formatBigInt(stakeTokenBalance) }} MST
+          <InfoCard title="Wallet Balance">
+            {{ +formatBigInt(stakeTokenBalance) }} {{ symbol }}
           </InfoCard>
-          <InfoCard title="Your Staked MST">
-            {{ formatBigInt(stakedBalance) }} MST
+          <InfoCard title="Your Staked tokens">
+            {{ +formatBigInt(stakedBalance) }} {{ symbol }}
+
           </InfoCard>
           <InfoCard title="Pending Rewards">
-            {{ formatBigInt(pendingRewards) }} MST
+            {{ +formatBigInt(pendingRewards) }} {{ symbol }}
           </InfoCard>
           <InfoCard title="Yearly Reward Rate (APY Approx.)">
             {{ rewardRateDisplay }}%
@@ -35,22 +36,18 @@
         <div class="bg-gray-700 p-4 rounded-lg mb-6">
           <h2 class="text-xl font-semibold mb-3">Stake Tokens</h2>
           <div class="flex items-center space-x-2 mb-3">
-            <input
-              type="number"
-              v-model="stakeAmount"
-              placeholder="Amount to stake"
-              class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500"
-            />
+            <input type="number" v-model="stakeAmount" placeholder="Amount to stake"
+              class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500" />
             <button @click="setMaxStakeAmount" class="text-sm text-indigo-400 hover:text-indigo-300">Max</button>
           </div>
-           <button
-            @click="handleStake"
+          <button @click="handleStake"
             :disabled="isTxLoading || !stakeAmount || parseFloat(stakeAmount) <= 0 || (allowance < parseUnits(stakeAmount.toString(), 18))"
-            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-          >
-            {{ (allowance < parseUnits(stakeAmount.toString() || '0', 18) && parseFloat(stakeAmount || '0') > 0) ? 'Approve & Stake' : 'Stake' }}
+            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+            {{ (allowance < parseUnits(stakeAmount.toString() || '0', 18) && parseFloat(stakeAmount || '0') > 0) ?
+              'Approve & Stake' : 'Stake' }}
           </button>
-          <p v-if="allowance < parseUnits(stakeAmount.toString() || '0', 18) && parseFloat(stakeAmount || '0') > 0" class="text-xs text-yellow-400 mt-1">
+          <p v-if="allowance < parseUnits(stakeAmount.toString() || '0', 18) && parseFloat(stakeAmount || '0') > 0"
+            class="text-xs text-yellow-400 mt-1">
             You need to approve spending first. Clicking will initiate an approval transaction then staking.
           </p>
         </div>
@@ -59,52 +56,42 @@
         <div class="bg-gray-700 p-4 rounded-lg">
           <h2 class="text-xl font-semibold mb-3">Withdraw Staked Tokens</h2>
           <div v-if="!withdrawalRequestInfo.isActive">
-              <div class="flex items-center space-x-2 mb-3">
-                <input
-                  type="number"
-                  v-model="withdrawAmount"
-                  placeholder="Amount to withdraw"
-                  class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <button @click="setMaxWithdrawAmount" class="text-sm text-indigo-400 hover:text-indigo-300">Max</button>
-              </div>
-              <button
-                @click="handleRequestWithdrawal"
-                :disabled="isTxLoading || !withdrawAmount || parseFloat(withdrawAmount) <= 0"
-                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-              >
-                Request Withdrawal ({{ COOLDOWN_PERIOD_HOURS }}h Cooldown)
-              </button>
+            <div class="flex items-center space-x-2 mb-3">
+              <input type="number" v-model="withdrawAmount" placeholder="Amount to withdraw"
+                class="flex-grow p-2 rounded-md bg-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500" />
+              <button @click="setMaxWithdrawAmount" class="text-sm text-indigo-400 hover:text-indigo-300">Max</button>
+            </div>
+            <button @click="handleRequestWithdrawal"
+              :disabled="isTxLoading || !withdrawAmount || parseFloat(withdrawAmount) <= 0"
+              class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+              Request Withdrawal ({{ COOLDOWN_PERIOD_HOURS }}h Cooldown)
+            </button>
           </div>
           <div v-else>
-              <p class="mb-2">Withdrawal requested: {{ formatBigInt(withdrawalRequestInfo.amount) }} MST</p>
-              <p class="mb-2 text-yellow-400">
-                <span v-if="withdrawalRequestInfo.cooldownOver">Cooldown period over. You can withdraw now.</span>
-                <span v-else>Cooldown ends: {{ withdrawalRequestInfo.cooldownEndTimeFormatted }} ({{ withdrawalRequestInfo.cooldownRemainingFormatted }})</span>
-              </p>
-              <div class="flex space-x-2">
-                <button
-                    @click="handleWithdraw"
-                    :disabled="isTxLoading || !withdrawalRequestInfo.cooldownOver"
-                    class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-                >
-                    Withdraw Now
-                </button>
-                <button
-                    @click="handleCancelWithdrawal"
-                    :disabled="isTxLoading"
-                    class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
-                >
-                    Cancel Request
-                </button>
-              </div>
+            <p class="mb-2">Withdrawal requested: {{ formatBigInt(withdrawalRequestInfo.amount) }} MST</p>
+            <p class="mb-2 text-yellow-400">
+              <span v-if="withdrawalRequestInfo.cooldownOver">Cooldown period over. You can withdraw now.</span>
+              <span v-else>Cooldown ends: {{ withdrawalRequestInfo.cooldownEndTimeFormatted }} ({{
+                withdrawalRequestInfo.cooldownRemainingFormatted }})</span>
+            </p>
+            <div class="flex space-x-2">
+              <button @click="handleWithdraw" :disabled="isTxLoading || !withdrawalRequestInfo.cooldownOver"
+                class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                Withdraw Now
+              </button>
+              <button @click="handleCancelWithdrawal" :disabled="isTxLoading"
+                class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                Cancel Request
+              </button>
+            </div>
           </div>
         </div>
 
         <div v-if="isTxLoading" class="mt-4 text-center">
           <p class="text-lg">Transaction in progress...</p>
           <p v-if="txHash" class="text-sm">Tx Hash:
-            <a :href="`https://localhost/tx/${txHash}`" target="_blank" class="text-indigo-400 hover:underline">{{ txHash.slice(0,10) }}...</a>
+            <a :href="`https://localhost/tx/${txHash}`" target="_blank" class="text-indigo-400 hover:underline">{{
+              txHash.slice(0, 10) }}...</a>
             (Note: Link for local Hardhat node might not work in browser directly)
           </p>
         </div>
@@ -112,14 +99,14 @@
 
       </div>
       <div v-else-if="!isLoadingInitial && !error" class="text-center py-8">
-        <p class="text-xl">Please connect your wallet to use the Staking DApp.</p>
+        <p class="text-xl">Please connect your wallet to use the Staking dApp.</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-      
+
 import InfoCard from './InfoCard.vue';
 import { ref, onMounted, watch, computed } from 'vue';
 import {
@@ -127,11 +114,14 @@ import {
   formatUnits, parseUnits, Hash, Address, Hex
 } from 'viem';
 import { hardhat } from 'viem/chains'; // For local Hardhat node
-import { STAKE_TOKEN_ADDRESS, STAKING_CONTRACT_ADDRESS, STAKE_TOKEN_ABI, STAKING_CONTRACT_ABI } from '../config';
+import { STAKE_TOKEN_ADDRESS, STAKING_CONTRACT_ADDRESS, STAKE_TOKEN_ABI, STAKING_CONTRACT_ABI } from '../contractLoader';
 
 // Constants
 const COOLDOWN_PERIOD_SECONDS = 2 * 60 * 60; // 2 hours from contract
 const COOLDOWN_PERIOD_HOURS = COOLDOWN_PERIOD_SECONDS / 3600;
+
+const contractStakedToken = ref<Address>(STAKE_TOKEN_ADDRESS);
+const contractStakingContract = ref<Address>(STAKING_CONTRACT_ADDRESS);
 
 // Reactive State
 const account = ref<Address | null>(null);
@@ -144,6 +134,7 @@ const pendingRewards = ref(0n);
 const rewardRate = ref(0n); // Raw rate from contract (tokens per second)
 const allowance = ref(0n);
 
+const symbol = ref('');
 const stakeAmount = ref('');
 const withdrawAmount = ref('');
 
@@ -154,13 +145,13 @@ const successMessage = ref<string | null>(null);
 const txHash = ref<Hash | null>(null);
 
 const withdrawalRequestInfo = ref({
-    isActive: false,
-    amount: 0n,
-    requestTime: 0n,
-    cooldownEndTime: 0n,
-    cooldownOver: false,
-    cooldownEndTimeFormatted: '',
-    cooldownRemainingFormatted: '',
+  isActive: false,
+  amount: 0n,
+  requestTime: 0n,
+  cooldownEndTime: 0n,
+  cooldownOver: false,
+  cooldownEndTimeFormatted: '',
+  cooldownRemainingFormatted: '',
 });
 
 
@@ -241,12 +232,18 @@ const fetchAllData = async () => {
   isLoadingInitial.value = true;
   error.value = null;
   try {
-    const [tokenBal, stakedBal, pendingRew, rewRate, allow, withdrawalReq] = await Promise.all([
+    const [tokenBalance, tokenSymobl, stakedBal, pendingRew, rate, allow, withdrawalReq] = await Promise.all([
       publicClient.value.readContract({
         address: STAKE_TOKEN_ADDRESS,
         abi: STAKE_TOKEN_ABI,
         functionName: 'balanceOf',
         args: [account.value],
+      }),
+      publicClient.value.readContract({
+        address: STAKE_TOKEN_ADDRESS,
+        abi: STAKE_TOKEN_ABI,
+        functionName: 'symbol',
+        args: [],
       }),
       publicClient.value.readContract({
         address: STAKING_CONTRACT_ADDRESS,
@@ -278,13 +275,17 @@ const fetchAllData = async () => {
         args: [account.value],
       }),
     ]);
-    stakeTokenBalance.value = tokenBal as bigint;
+
+
+    stakeTokenBalance.value = tokenBalance as bigint;
+    symbol.value = tokenSymobl as string;
     stakedBalance.value = stakedBal as bigint;
     pendingRewards.value = pendingRew as bigint;
-    rewardRate.value = rewRate as bigint; // This is likely the raw rewardRate from contract
+    console.log('Pending rewards:', pendingRew);
+    rewardRate.value = rate as bigint; // This is likely the raw rewardRate from contract
     allowance.value = allow as bigint;
-    
-    updateWithdrawalRequestInfo(withdrawalReq as any);
+
+    // updateWithdrawalRequestInfo(withdrawalReq as any);
 
   } catch (e: any) {
     console.error("Data fetching error:", e);
@@ -294,43 +295,43 @@ const fetchAllData = async () => {
   }
 };
 
-const updateWithdrawalRequestInfo = (data: {amount: bigint, requestTime: bigint, withdrawAvailableTime: bigint}) => {
-    const now = BigInt(Math.floor(Date.now() / 1000));
-    withdrawalRequestInfo.value = {
-        isActive: data.amount > 0n,
-        amount: data.amount,
-        requestTime: data.requestTime,
-        cooldownEndTime: data.withdrawAvailableTime,
-        cooldownOver: data.amount > 0n && now >= data.withdrawAvailableTime,
-        cooldownEndTimeFormatted: data.amount > 0n ? new Date(Number(data.withdrawAvailableTime) * 1000).toLocaleString() : '',
-        cooldownRemainingFormatted: '',
-    };
-    if (data.amount > 0n && now < data.withdrawAvailableTime) {
-        startCooldownTimer(Number(data.withdrawAvailableTime));
-    }
+const updateWithdrawalRequestInfo = (data: { amount: bigint, requestTime: bigint, withdrawAvailableTime: bigint }) => {
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  withdrawalRequestInfo.value = {
+    isActive: data.amount > 0n,
+    amount: data.amount,
+    requestTime: data.requestTime,
+    cooldownEndTime: data.withdrawAvailableTime,
+    cooldownOver: data.amount > 0n && now >= data.withdrawAvailableTime,
+    cooldownEndTimeFormatted: data.amount > 0n ? new Date(Number(data.withdrawAvailableTime) * 1000).toLocaleString() : '',
+    cooldownRemainingFormatted: '',
+  };
+  if (data.amount > 0n && now < data.withdrawAvailableTime) {
+    startCooldownTimer(Number(data.withdrawAvailableTime));
+  }
 };
 
 let cooldownInterval: number | undefined;
 const startCooldownTimer = (endTimeSeconds: number) => {
-    if (cooldownInterval) clearInterval(cooldownInterval);
-    
-    const updateTimer = () => {
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        const remaining = endTimeSeconds - nowSeconds;
-        if (remaining <= 0) {
-            withdrawalRequestInfo.value.cooldownOver = true;
-            withdrawalRequestInfo.value.cooldownRemainingFormatted = 'Cooldown over';
-            if (cooldownInterval) clearInterval(cooldownInterval);
-        } else {
-            const hours = Math.floor(remaining / 3600);
-            const minutes = Math.floor((remaining % 3600) / 60);
-            const seconds = remaining % 60;
-            withdrawalRequestInfo.value.cooldownRemainingFormatted = 
-                `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
-    };
-    updateTimer(); // Initial call
-    cooldownInterval = setInterval(updateTimer, 1000);
+  if (cooldownInterval) clearInterval(cooldownInterval);
+
+  const updateTimer = () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const remaining = endTimeSeconds - nowSeconds;
+    if (remaining <= 0) {
+      withdrawalRequestInfo.value.cooldownOver = true;
+      withdrawalRequestInfo.value.cooldownRemainingFormatted = 'Cooldown over';
+      if (cooldownInterval) clearInterval(cooldownInterval);
+    } else {
+      const hours = Math.floor(remaining / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+      const seconds = remaining % 60;
+      withdrawalRequestInfo.value.cooldownRemainingFormatted =
+        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+  };
+  updateTimer(); // Initial call
+  cooldownInterval = setInterval(updateTimer, 1000);
 };
 
 
@@ -357,45 +358,48 @@ const handleTransaction = async (txPromise: Promise<Hash>, successMsg: string) =
 
 const handleStake = async () => {
   if (!walletClient.value || !stakeAmount.value) return;
-  const amountToStake = parseUnits(stakeAmount.value, 18);
+  const amountToStake = parseUnits(stakeAmount.value.toString(), 18);
 
   if (allowance.value < amountToStake) {
     // Approve first
     try {
-        isTxLoading.value = true;
-        error.value = null;
-        successMessage.value = null;
-        txHash.value = null;
+      isTxLoading.value = true;
+      error.value = null;
+      successMessage.value = null;
+      txHash.value = null;
+      console.log('Approve staking:', amountToStake);
 
-        const approveHash = await walletClient.value.writeContract({
-            address: STAKE_TOKEN_ADDRESS,
-            abi: STAKE_TOKEN_ABI,
-            functionName: 'approve',
-            args: [STAKING_CONTRACT_ADDRESS, amountToStake],
-        });
-        txHash.value = approveHash;
-        await publicClient.value.waitForTransactionReceipt({ hash: approveHash });
-        successMessage.value = 'Approval successful! Now staking...';
-        allowance.value = amountToStake; // Optimistically update allowance
 
-        // Then stake
-        const stakeHash = await walletClient.value.writeContract({
-            address: STAKING_CONTRACT_ADDRESS,
-            abi: STAKING_CONTRACT_ABI,
-            functionName: 'stake',
-            args: [amountToStake],
-        });
-        txHash.value = stakeHash; // Update txHash for staking
-        await publicClient.value.waitForTransactionReceipt({ hash: stakeHash });
-        successMessage.value = 'Successfully staked tokens!';
-        stakeAmount.value = '';
-        await fetchAllData();
-    } catch (e:any) {
-        console.error("Approve/Stake error:", e);
-        error.value = e.shortMessage || e.message || 'Approve or Stake transaction failed.';
+      const approveHash = await walletClient.value.writeContract({
+        address: STAKE_TOKEN_ADDRESS,
+        abi: STAKE_TOKEN_ABI,
+        functionName: 'approve',
+        args: [STAKING_CONTRACT_ADDRESS, amountToStake],
+      });
+      txHash.value = approveHash;
+      await publicClient.value.waitForTransactionReceipt({ hash: approveHash });
+      successMessage.value = 'Approval successful! Now staking...';
+      allowance.value = amountToStake; // Optimistically update allowance
+
+      // Then stake
+      const stakeHash = await walletClient.value.writeContract({
+        address: STAKING_CONTRACT_ADDRESS,
+        abi: STAKING_CONTRACT_ABI,
+        functionName: 'stake',
+        args: [amountToStake],
+      });
+      txHash.value = stakeHash; // Update txHash for staking
+      await publicClient.value.waitForTransactionReceipt({ hash: stakeHash });
+      successMessage.value = 'Successfully staked tokens!';
+      stakeAmount.value = '';
+      await fetchAllData();
+
+    } catch (e: any) {
+      console.error("Approve/Stake error:", e);
+      error.value = e.shortMessage || e.message || 'Approve or Stake transaction failed.';
     } finally {
-        isTxLoading.value = false;
-        setTimeout(() => { successMessage.value = null; error.value = null; }, 7000);
+      isTxLoading.value = false;
+      setTimeout(() => { successMessage.value = null; error.value = null; }, 7000);
     }
 
   } else {
@@ -413,56 +417,56 @@ const handleStake = async () => {
 };
 
 const handleRequestWithdrawal = async () => {
-    if (!walletClient.value || !withdrawAmount.value) return;
-    const amountToWithdraw = parseUnits(withdrawAmount.value, 18);
-     handleTransaction(
-      walletClient.value.writeContract({
-        address: STAKING_CONTRACT_ADDRESS,
-        abi: STAKING_CONTRACT_ABI,
-        functionName: 'requestWithdrawal',
-        args: [amountToWithdraw],
-      }),
-      'Withdrawal requested successfully!'
-    ).then(() => withdrawAmount.value = '');
+  if (!walletClient.value || !withdrawAmount.value) return;
+  const amountToWithdraw = parseUnits(withdrawAmount.value, 18);
+  handleTransaction(
+    walletClient.value.writeContract({
+      address: STAKING_CONTRACT_ADDRESS,
+      abi: STAKING_CONTRACT_ABI,
+      functionName: 'requestWithdrawal',
+      args: [amountToWithdraw],
+    }),
+    'Withdrawal requested successfully!'
+  ).then(() => withdrawAmount.value = '');
 };
 
 const handleWithdraw = async () => {
-    if (!walletClient.value) return;
-     handleTransaction(
-      walletClient.value.writeContract({
-        address: STAKING_CONTRACT_ADDRESS,
-        abi: STAKING_CONTRACT_ABI,
-        functionName: 'withdraw',
-        args: [], // Withdraw function in contract takes no args if using stored request
-      }),
-      'Successfully withdrew tokens!'
-    );
+  if (!walletClient.value) return;
+  handleTransaction(
+    walletClient.value.writeContract({
+      address: STAKING_CONTRACT_ADDRESS,
+      abi: STAKING_CONTRACT_ABI,
+      functionName: 'withdraw',
+      args: [], // Withdraw function in contract takes no args if using stored request
+    }),
+    'Successfully withdrew tokens!'
+  );
 };
 
 const handleCancelWithdrawal = async () => {
-    if (!walletClient.value) return;
-     handleTransaction(
-      walletClient.value.writeContract({
-        address: STAKING_CONTRACT_ADDRESS,
-        abi: STAKING_CONTRACT_ABI,
-        functionName: 'cancelWithdrawalRequest',
-        args: [],
-      }),
-      'Withdrawal request cancelled.'
-    );
+  if (!walletClient.value) return;
+  handleTransaction(
+    walletClient.value.writeContract({
+      address: STAKING_CONTRACT_ADDRESS,
+      abi: STAKING_CONTRACT_ABI,
+      functionName: 'cancelWithdrawalRequest',
+      args: [],
+    }),
+    'Withdrawal request cancelled.'
+  );
 };
 
 // Helpers
-const formatBigInt = (value: bigint, decimals = 18, precision = 4) => {
+const formatBigInt = (value: bigint, decimals = 18, precision = 6) => {
   if (value === undefined || value === null) return '0.00';
   return parseFloat(formatUnits(value, decimals)).toFixed(precision);
 };
 
 const setMaxStakeAmount = () => {
-    stakeAmount.value = formatUnits(stakeTokenBalance.value, 18);
+  stakeAmount.value = formatUnits(stakeTokenBalance.value, 18);
 };
 const setMaxWithdrawAmount = () => {
-    withdrawAmount.value = formatUnits(stakedBalance.value, 18);
+  withdrawAmount.value = formatUnits(stakedBalance.value, 18);
 };
 
 

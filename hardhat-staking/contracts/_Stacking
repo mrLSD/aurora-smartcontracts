@@ -26,7 +26,7 @@ contract Staking is Ownable, ReentrancyGuard {
 
     constructor(address _stakeTokenAddress, uint256 _initialRewardRatePerSecond) Ownable(msg.sender) {
         stakeToken = IERC20(_stakeTokenAddress);
-        rewardRatePerSecond = _initialRewardRatePerSecond; // e.g., STK per second for the whole pool
+        rewardRatePerSecond = _initialRewardRatePerSecond; // e.g.,źź STK per second for the whole pool
         lastGlobalUpdateTime = block.timestamp;
     }
 
