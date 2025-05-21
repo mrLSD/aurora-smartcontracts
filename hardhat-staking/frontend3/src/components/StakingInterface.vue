@@ -1,10 +1,8 @@
-Субтитры создавал DimaTorzok<template>
+<template>
   <div class="container mx-auto p-4 max-w-2xl">
     <div class="bg-gray-800 text-white p-6 rounded-lg shadow-xl">
       <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">StakeToken Staging dApp <br>
-          {{ contractStakingContract }} <br>
-          {{ contractStakedToken }}</h1>
+        <h1 class="text-3xl font-bold">StakeToken Staging dApp</h1>
         <button @click="account ? disconnectWallet() : connectWallet()"
           class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 ease-in-out">
           {{ account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet' }}
@@ -21,7 +19,7 @@
             {{ +formatBigInt(stakeTokenBalance) }} {{ symbol }}
           </InfoCard>
           <InfoCard title="Your Staked tokens">
-            {{ +formatBigInt(stakedBalance) }} {{ symbol }}
+            {{ +formatBigInt(stakedBalance + pendingRewards) }} {{ symbol }}
 
           </InfoCard>
           <InfoCard title="Pending Rewards">
@@ -144,6 +142,27 @@ const error = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 const txHash = ref<Hash | null>(null);
 
+
+let rewardsInterval: number | undefined; // Для хранения ID интервала
+
+const fetchPendingRewards = async () => {
+  if (!publicClient.value || !account.value) {
+    return;
+  }
+  try {
+    const rewards = await publicClient.value.readContract({
+      address: STAKING_CONTRACT_ADDRESS,
+      abi: STAKING_CONTRACT_ABI,
+      functionName: 'getPendingRewards',
+      args: [account.value],
+    });
+    pendingRewards.value = rewards as bigint;
+  } catch (e: any) {
+    console.error("Error fetching pending rewards:", e.shortMessage || e.message);
+    error.value = 'Failed to fetch pending rewards.';
+  }
+};
+
 const withdrawalRequestInfo = ref({
   isActive: false,
   amount: 0n,
@@ -206,6 +225,8 @@ const connectWallet = async () => {
     walletClient.value = _walletClient;
 
     await fetchAllData();
+    if (rewardsInterval) clearInterval(rewardsInterval);
+    rewardsInterval = setInterval(fetchPendingRewards, 3000);
   } catch (e: any) {
     console.error("Connection error:", e);
     error.value = e.message || 'Failed to connect wallet.';
@@ -217,6 +238,10 @@ const disconnectWallet = () => {
   account.value = null;
   publicClient.value = null;
   walletClient.value = null;
+  if (rewardsInterval) {
+    clearInterval(rewardsInterval);
+    rewardsInterval = undefined;
+  }
   // Reset data
   stakeTokenBalance.value = 0n;
   stakedBalance.value = 0n;
@@ -418,7 +443,7 @@ const handleStake = async () => {
 
 const handleRequestWithdrawal = async () => {
   if (!walletClient.value || !withdrawAmount.value) return;
-  const amountToWithdraw = parseUnits(withdrawAmount.value, 18);
+  const amountToWithdraw = parseUnits(withdrawAmount.value.toString(), 18);
   handleTransaction(
     walletClient.value.writeContract({
       address: STAKING_CONTRACT_ADDRESS,
@@ -486,14 +511,22 @@ onMounted(() => {
       window.location.reload();
     });
   }
+  if (account.value) {
+    fetchPendingRewards();
+    rewardsInterval = setInterval(fetchPendingRewards, 3000);
+  }
   // Try to auto-connect if already permitted
   // This often requires user interaction on first load for privacy reasons
-  // connectWallet(); // You might want this, or let user click connect
+  connectWallet();
 });
+
 
 watch(account, (newAccount) => {
   if (newAccount) {
     fetchAllData();
+    if (!rewardsInterval) {
+      rewardsInterval = setInterval(fetchPendingRewards, 3000);
+    }
   }
 });
 
