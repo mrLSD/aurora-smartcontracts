@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-const props = defineProps<{
+defineProps<{
   visible: boolean
 }>()
 
@@ -31,6 +31,7 @@ const emits = defineEmits(['update:visible', 'confirm','info'])
 const amount = ref('')
 
 const close = () => {
+  amount.value = ''
   emits('update:visible', false)
 }
 
