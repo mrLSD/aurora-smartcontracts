@@ -31,6 +31,10 @@
                 {{ (allowance < parseUnits(String(stakeAmount || '0'), 18) && parseFloat(String(stakeAmount || '0')) > 0) ?
                   'Approve & Stake' : 'Stake' }}
               </button>
+              <button @click="handleInc"
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition duration-200">
+                Increment request
+              </button>              
               <p v-if="allowance < parseUnits(String(stakeAmount || '0'), 18) && parseFloat(String(stakeAmount || '0')) > 0"
                 class="text-xs text-yellow-400 mt-1">
                 You need to approve spending first. Clicking will initiate an approval transaction then staking.
@@ -384,6 +388,19 @@ const handleTransaction = async (txPromise: Promise<Hash>, successMsg: string) =
     isTxLoading.value = false;
     setTimeout(() => { successMessage.value = null; error.value = null; }, 5000);
   }
+};
+
+const handleInc = async () => {
+  if (!walletClient.value) return;
+  handleTransaction(
+    walletClient.value.writeContract({
+      address: STAKING_CONTRACT_ADDRESS,
+      abi: STAKING_CONTRACT_ABI,
+      functionName: 'incrementRequest',
+      args: [],
+    }),
+    'Increment request successful!'
+  );
 };
 
 const handleStake = async () => {

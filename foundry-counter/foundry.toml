@@ -1,17 +1,25 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["dependencies"] 
+optimizer = true
+optimizer_runs = 200
+libs = ["dependencies"]
+libraries = [
+    "dependencies/@aurora-sdk-v0.1.0/aurora-solidity-sdk/src/AuroraSdk.sol:AuroraSdk:0x8778DF1499613607581388060c142E1a97a7822F",
+    "dependencies/@aurora-sdk-v0.1.0/aurora-solidity-sdk/src/Codec.sol:Codec:0x96d0f0D9964d6c9FD80b15e5262b04312d49dfa1",
+    "dependencies/@aurora-sdk-v0.1.0/aurora-solidity-sdk/src/Utils.sol:Utils:0xb444dCf9a20817DdB5D6fFaCfA6904B16fe14FCb"
+]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 [dependencies]
-"@openzeppelin-contracts" = "5.3"
-"@aurora-sdk" = { version = "0.1.0", git = "https://github.com/aurora-is-near/aurora-contracts-sdk.git", tag = "v0.1.0" }
-forge-std = "1.9"
+"@openzeppelin-contracts" = "5.3.0"
+"@aurora-sdk" = { version = "v0.1.0", git = "https://github.com/aurora-is-near/aurora-contracts-sdk.git", tag = "v0.1.0" }
+forge-std = "1.9.7"
 
 [soldeer]
 recursive_deps = true
 
 [rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"
+
