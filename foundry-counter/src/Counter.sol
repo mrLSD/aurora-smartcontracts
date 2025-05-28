@@ -8,15 +8,15 @@ import {
     IERC20,
     Codec,
     NEAR,
+PromiseResult,
     PromiseCreateArgs,
     PromiseResultStatus,
     PromiseWithCallback
 } from "@aurora-sdk/AuroraSdk.sol";
 
 // NEAR gas constants (TGas)
-uint64 constant CONTRACT_CALL_NEAR_GAS = 35_000_000_000_000;
-uint64 constant CONTRACT_CALLBACK_NEAR_GAS = 10_000_000_000_000;
-uint64 constant APPROVE_NEAR_GAS = 20_000_000_000_000;
+uint64 constant CONTRACT_CALL_NEAR_GAS = 2_000_000_000_000;
+uint64 constant CONTRACT_CALLBACK_NEAR_GAS = 6_000_000_000_000;
 
 contract Counter is AccessControl {
     using AuroraSdk for NEAR;
@@ -27,7 +27,7 @@ contract Counter is AccessControl {
     bytes32 public constant CALLBACK_ROLE = keccak256("CALLBACK_ROLE");
 
     uint256 public number;
-    uint256 public numberFromNEAR;
+    uint128 public numberFromNEAR;
     string public nearAccountId;
     NEAR public near;
     IERC20 public wNEAR;
@@ -88,18 +88,25 @@ contract Counter is AccessControl {
     }
 
     function getCounterCallback() public onlyRole(CALLBACK_ROLE) {
-        if (AuroraSdk.promiseResult(0).status != PromiseResultStatus.Successful) {
+        PromiseResult memory promiseResult = AuroraSdk.promiseResult(0);
+        if (promiseResult.status != PromiseResultStatus.Successful) {
             revert("Call to set failed");
         }
-        numberFromNEAR = bytesToUint(AuroraSdk.promiseResult(0).output);
+        numberFromNEAR = _stringToUint(string(promiseResult.output));
     }
 
-    function bytesToUint(bytes memory b) public pure returns (uint256) {
-        require(b.length >= 32, "Input must be at least 32 bytes");
-        uint256 value;
-        assembly {
-            value := mload(add(b, 32))
+    function _stringToUint(
+        string memory s
+    ) private pure returns (uint128 result) {
+        bytes memory b = bytes(s);
+        uint128 i;
+        result = 0;
+        for (i = 0; i < b.length; i++) {
+            uint128 c = uint128(uint8(b[i]));
+            if (c >= 48 && c <= 57) {
+                result = result * 10 + (c - 48);
+            }
         }
-        return value;
     }
+
 }

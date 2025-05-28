@@ -153,3 +153,21 @@ send-inc:
 		--rpc-url $(AURORA_TESTNET_RPC_URL) \
 		--legacy \
 		--private-key $(AURORA_PRIVATE_KEY)
+
+#========================================================
+# Get NEAR counter number
+near-send-getnumber-aurora:
+	@aurora-cli --network testnet --near-key-path $(NEAR_TESTNET_CREDENTIALS) submit \
+		--aurora-secret-key $(AURORA_FOR_NEAR_PRIVATE_KEY) \
+		--address $(AURORA_CONTRACT1_ADDRESS) \
+		--abi-path out/Counter.sol/Counter.abi.json \
+		--function nearGetCounterCall
+	@cast call $(AURORA_CONTRACT1_ADDRESS) "numberFromNEAR()" \
+		--rpc-url $(AURORA_TESTNET_RPC_URL) \
+		--legacy \
+		--private-key $(AURORA_PRIVATE_KEY)
+	@aurora-cli --network testnet --near-key-path $(NEAR_TESTNET_CREDENTIALS) view-call \
+		--address $(AURORA_CONTRACT1_ADDRESS) \
+		--from $(AURORA_CONTRACT1_ADDRESS) \
+		--abi-path out/Counter.sol/Counter.abi.json \
+		--function numberFromNEAR
