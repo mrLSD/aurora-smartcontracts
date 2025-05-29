@@ -1,0 +1,7 @@
+{
+    "network": "testnet",
+    "engine_account_id": "aurora",
+    "aurora_api_key": "",
+    "near_key_path": "/Users/evgeny/.near-credentials/testnet/dev-tst1.testnet.json",
+    "evm_secret_key": ""
+  }

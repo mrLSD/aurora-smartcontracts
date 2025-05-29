@@ -2,6 +2,7 @@
 cache/
 out/
 .idea/
+_test/
 
 # Ignores development broadcast logs
 !/broadcast
